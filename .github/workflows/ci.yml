@@ -1,56 +1,30 @@
-name: CI
-on:
-  push:
-    branches:
-      - 6.2.x
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+
+name: "CI"
+on: [push]
+
 jobs:
   ci:
-    name: '${{ matrix.os.name}} | Java ${{ matrix.java.version}}'
-    if: ${{ github.repository == 'spring-projects/spring-framework' }}
-    runs-on: ${{ matrix.os.id }}
-    timeout-minutes: 60
-    strategy:
-      matrix:
-        os:
-          - id: ubuntu-latest
-            name: Linux
-        java:
-          - version: 17
-            toolchain: false
-          - version: 21
-            toolchain: true
-          - version: 23
-            toolchain: true
-        exclude:
-          - os:
-              name: Linux
-            java:
-              version: 17
+    name: "CI"
+    runs-on: ubuntu-latest
+    container: springci/spring-framework-ci:6.2.x
     steps:
-      - name: Prepare Windows runner
-        if: ${{ runner.os == 'Windows' }}
+      - uses: actions/checkout@v2
+      - name: Pre CI script
+        if: ${{ hashFiles('.seal/pre_ci_script.sh') != '' }}
         run: |
-          git config --global core.autocrlf true
-          git config --global core.longPaths true
-          Stop-Service -name Docker
-      - name: Check Out Code
-        uses: actions/checkout@v4
-      - name: Build
-        id: build
-        uses: ./.github/actions/build
-        with:
-          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
-          java-early-access: ${{ matrix.java.early-access || 'false' }}
-          java-distribution: ${{ matrix.java.distribution }}
-          java-toolchain: ${{ matrix.java.toolchain }}
-          java-version: ${{ matrix.java.version }}
-      - name: Send Notification
+          .seal/pre_ci_script.sh
+      - name: "Build"
+        run: |
+          ./gradlew build
+      - name: "Upload jars"
         if: always()
-        uses: ./.github/actions/send-notification
+        uses: actions/upload-artifact@v4
         with:
-          build-scan-url: ${{ steps.build.outputs.build-scan-url }}
-          run-name: ${{ format('{0} | {1} | Java {2}', github.ref_name, matrix.os.name, matrix.java.version) }}
-          status: ${{ job.status }}
-          webhook-url: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          name: "jars"
+          path: "**/*.jar"
+      - name: "Upload test results"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "build-results"
+          path: "**/build/reports"
